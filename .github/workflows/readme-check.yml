@@ -1,0 +1,40 @@
+name: README-check
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  readme_check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Set up git client
+        run: |
+          git config --global user.email "readme-check@assa.dev"
+          git config --global user.name "README Checker Bot"
+          git remote set-url origin https://x-access-token:$GITHUB_TOKEN@github.com/A-S-S-A/git-playground.git
+          git fetch --unshallow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if the current commit has bad README
+        id: readme_sanity_check
+        run: |
+          README_CHECK="$(echo $README_SHA256_CHECKSUM | sha256sum -c --status - && echo true || echo false)"
+          printf "README status: %s\n" $README_CHECK
+          echo "::set-output name=README_GOOD::$README_CHECK"
+        env:
+          README_SHA256_CHECKSUM: ${{ secrets.README_SHA256_CHECKSUM }}
+
+      - name: On push events, revert changes if necessary
+        if: ${{ steps.readme_sanity_check.outputs.README_GOOD != 'true' }}
+        run: |
+          while ! sha256sum -c <(echo $README_SHA256_CHECKSUM); do
+            git reset --hard 'HEAD^'
+          done
+          git push --force
+        env:
+          README_SHA256_CHECKSUM: ${{ secrets.README_SHA256_CHECKSUM }}
